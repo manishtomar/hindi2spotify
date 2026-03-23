@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:saavn.dev)",
+      "WebFetch(domain:www.allthingsdev.co)",
+      "WebFetch(domain:sumitkolhe.gitbook.io)",
+      "WebFetch(domain:medium.com)",
+      "Bash(python3 -m py_compile:*)",
+      "Bash(python3:*)",
+      "Bash(uv run:*)",
+      "Bash(/tmp/debug_gaana_api.py:*)",
+      "Bash(/tmp/debug_gaana_api4.py:*)"
+    ]
+  }
+}
