@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import sys
@@ -39,7 +40,35 @@ def get_spotify_client() -> spotipy.Spotify:
     return spotipy.Spotify(auth=token_info["access_token"])
 
 
+def cmd_print(source: str) -> None:
+    """Print songs from the given source without touching Spotify."""
+    if source == "saavn":
+        songs = get_jiosaavn_songs(50)
+    else:
+        songs = get_gaana_songs(50)
+
+    for i, song in enumerate(songs, 1):
+        artists = ", ".join(song.artists)
+        print(f"{i:2}. {song.title} — {artists}")
+
+
 def main():
+    parser = argparse.ArgumentParser(prog="hindi2spotify")
+    subparsers = parser.add_subparsers(dest="command")
+
+    print_parser = subparsers.add_parser("print", help="Print songs from a source")
+    print_parser.add_argument(
+        "source", choices=["saavn", "gaana"], help="Source to fetch songs from"
+    )
+
+    args = parser.parse_args()
+
+    if args.command == "print":
+        load_dotenv()
+        cmd_print(args.source)
+        return
+
+    # Default: sync to Spotify
     load_dotenv()
 
     logger.info("Starting hindi2spotify")
@@ -52,49 +81,42 @@ def main():
         logger.error("Spotify authentication failed: %s", e)
         sys.exit(1)
 
-    playlist_id = os.environ.get("SPOTIFY_PLAYLIST_ID")
-    if not playlist_id:
-        logger.error("SPOTIFY_PLAYLIST_ID not set")
+    saavn_playlist_id = os.environ.get("SPOTIFY_SAAVN_PLAYLIST_ID")
+    gaana_playlist_id = os.environ.get("SPOTIFY_GAANA_PLAYLIST_ID")
+    if not saavn_playlist_id or not gaana_playlist_id:
+        logger.error("SPOTIFY_SAAVN_PLAYLIST_ID and SPOTIFY_GAANA_PLAYLIST_ID must both be set")
         sys.exit(1)
 
-    # Scrape songs from both sources independently
-    all_songs = []
-
-    try:
-        jiosaavn_songs = get_jiosaavn_songs(30)
-        all_songs.extend(jiosaavn_songs)
-        logger.info("JioSaavn: got %d songs", len(jiosaavn_songs))
-    except Exception as e:
-        logger.error("JioSaavn scraper failed: %s", e)
-
-    try:
-        gaana_songs = get_gaana_songs(30)
-        all_songs.extend(gaana_songs)
-        logger.info("Gaana: got %d songs", len(gaana_songs))
-    except Exception as e:
-        logger.error("Gaana scraper failed: %s", e)
-
-    if not all_songs:
-        logger.error("No songs scraped from any source")
-        sys.exit(1)
-
-    # Deduplicate
-    unique_songs = list(set(all_songs))
-    logger.info("Total unique songs: %d (from %d raw)", len(unique_songs), len(all_songs))
-
-    # Match on Spotify
     matcher = SpotifyMatcher(sp)
-    track_uris = matcher.match_songs(unique_songs)
 
-    if not track_uris:
-        logger.error("No songs matched on Spotify")
-        sys.exit(1)
+    sources = [
+        ("JioSaavn", get_jiosaavn_songs, saavn_playlist_id),
+        ("Gaana", get_gaana_songs, gaana_playlist_id),
+    ]
 
-    # Update playlist
-    playlist_mgr = PlaylistManager(sp, playlist_id)
-    playlist_mgr.update_playlist(track_uris)
+    for source_name, get_songs, playlist_id in sources:
+        logger.info("Processing %s", source_name)
+        try:
+            songs = get_songs(50)
+            logger.info("%s: got %d songs", source_name, len(songs))
+        except Exception as e:
+            logger.error("%s scraper failed: %s", source_name, e)
+            continue
 
-    logger.info("Done! Playlist updated with %d tracks", len(track_uris))
+        if not songs:
+            logger.warning("%s: no songs scraped, skipping", source_name)
+            continue
+
+        track_uris = matcher.match_songs(songs)
+        if not track_uris:
+            logger.warning("%s: no songs matched on Spotify, skipping", source_name)
+            continue
+
+        playlist_mgr = PlaylistManager(sp, playlist_id, source_name)
+        playlist_mgr.update_playlist(track_uris)
+        logger.info("%s: playlist updated with %d tracks", source_name, len(track_uris))
+
+    logger.info("Done!")
 
 
 if __name__ == "__main__":

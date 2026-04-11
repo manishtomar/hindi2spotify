@@ -10,7 +10,7 @@ from scrapers import Song
 
 logger = logging.getLogger(__name__)
 
-CHARTS_URL = "https://gaana.com/charts"
+PLAYLIST_URL = "https://gaana.com/playlist/gaana-dj-hindi-top-50-1"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -20,10 +20,10 @@ HEADERS = {
 }
 
 
-def get_songs(limit: int = 30) -> List[Song]:
-    """Fetch trending Hindi songs from Gaana's charts page (server-side REDUX_DATA)."""
+def get_songs(limit: int = 50) -> List[Song]:
+    """Fetch trending Hindi songs from Gaana's Hindi Top 50 playlist."""
     try:
-        resp = requests.get(CHARTS_URL, headers=HEADERS, timeout=15)
+        resp = requests.get(PLAYLIST_URL, headers=HEADERS, timeout=15)
         resp.raise_for_status()
     except requests.RequestException as e:
         logger.error("Gaana request failed: %s", e)
@@ -50,42 +50,43 @@ def get_songs(limit: int = 30) -> List[Song]:
         logger.error("Gaana: failed to parse REDUX_DATA: %s", e)
         return []
 
-    weekly_songs = (
-        data.get("chartsReducer", {})
-        .get("homepageData", {})
-        .get("response", {})
-        .get("weekly_data", {})
-        .get("songs", [])
+    tracks = (
+        data.get("playlist", {})
+        .get("playlistDetail", {})
+        .get("tracks", [])
     )
 
-    if not weekly_songs:
-        logger.warning("Gaana: no songs found in weekly_data")
+    if not tracks:
+        logger.warning("Gaana: no tracks found in playlist")
         return []
 
     songs: List[Song] = []
-    for item in weekly_songs:
+    for item in tracks:
         if not isinstance(item, dict):
             continue
 
-        title = item.get("title", "")
+        title = item.get("track_title", "")
         if not title:
             continue
 
-        raw_artists = item.get("subText", "")
-        artists = [a.strip() for a in raw_artists.split(",") if a.strip()]
+        raw_artists = item.get("artist", [])
+        if isinstance(raw_artists, list):
+            artists = [a["name"] for a in raw_artists if isinstance(a, dict) and a.get("name")]
+        else:
+            artists = []
         if not artists:
             artists = ["Unknown"]
 
-        seo = item.get("seo", "")
-        source_url = f"https://gaana.com/song/{seo}" if seo else ""
+        seokey = item.get("seokey", "")
+        source_url = f"https://gaana.com/song/{seokey}" if seokey else ""
 
         songs.append(
             Song(
                 title=title,
                 artists=artists,
-                album="",
+                album=item.get("album_title", ""),
                 source="gaana",
-                source_id=str(item.get("id", "")),
+                source_id=str(item.get("track_id", "")),
                 source_url=source_url,
             )
         )

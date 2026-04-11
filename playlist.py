@@ -8,9 +8,10 @@ BATCH_SIZE = 100
 
 
 class PlaylistManager:
-    def __init__(self, sp, playlist_id: str):
+    def __init__(self, sp, playlist_id: str, source_name: str = ""):
         self.sp = sp
         self.playlist_id = playlist_id
+        self.source_name = source_name
 
     def update_playlist(self, track_uris: List[str]):
         """Replace all tracks in the playlist with the given URIs."""
@@ -42,7 +43,7 @@ class PlaylistManager:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
         self.sp.playlist_change_details(
             self.playlist_id,
-            description=f"Top Hindi songs from JioSaavn & Gaana. Updated {now}.",
+            description=f"Top Hindi songs from {self.source_name}. Updated {now}.",
         )
 
         logger.info("Playlist updated with %d tracks", len(track_uris))

@@ -10,9 +10,7 @@
       "WebFetch(domain:medium.com)",
       "Bash(python3 -m py_compile:*)",
       "Bash(python3:*)",
-      "Bash(uv run:*)",
-      "Bash(/tmp/debug_gaana_api.py:*)",
-      "Bash(/tmp/debug_gaana_api4.py:*)"
+      "Bash(uv run:*)"
     ]
   }
 }
