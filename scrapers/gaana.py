@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 from typing import List
 
 import requests
@@ -30,31 +29,24 @@ def get_songs(limit: int = 50) -> List[Song]:
         return []
 
     soup = BeautifulSoup(resp.text, "lxml")
-    scripts = soup.find_all("script")
-    redux_script = next(
-        (s.string for s in scripts if s.string and "REDUX_DATA" in s.string), None
+    # Gaana embeds a JSON-LD MusicPlaylist schema block containing all tracks
+    playlist_script = next(
+        (s.string for s in soup.find_all("script", type="application/ld+json")
+         if s.string and '"MusicPlaylist"' in s.string),
+        None,
     )
 
-    if not redux_script:
-        logger.warning("Gaana: REDUX_DATA not found in page")
-        return []
-
-    m = re.search(r"window\.REDUX_DATA\s*=\s*(\{.*\})\s*;?\s*$", redux_script, re.DOTALL)
-    if not m:
-        logger.warning("Gaana: could not extract REDUX_DATA JSON")
+    if not playlist_script:
+        logger.warning("Gaana: MusicPlaylist JSON-LD not found in page")
         return []
 
     try:
-        data = json.loads(m.group(1))
+        data = json.loads(playlist_script)
     except json.JSONDecodeError as e:
-        logger.error("Gaana: failed to parse REDUX_DATA: %s", e)
+        logger.error("Gaana: failed to parse JSON-LD: %s", e)
         return []
 
-    tracks = (
-        data.get("playlist", {})
-        .get("playlistDetail", {})
-        .get("tracks", [])
-    )
+    tracks = data.get("track", [])
 
     if not tracks:
         logger.warning("Gaana: no tracks found in playlist")
@@ -65,28 +57,25 @@ def get_songs(limit: int = 50) -> List[Song]:
         if not isinstance(item, dict):
             continue
 
-        title = item.get("track_title", "")
+        title = item.get("name", "")
         if not title:
             continue
 
-        raw_artists = item.get("artist", [])
-        if isinstance(raw_artists, list):
-            artists = [a["name"] for a in raw_artists if isinstance(a, dict) and a.get("name")]
-        else:
-            artists = []
-        if not artists:
-            artists = ["Unknown"]
+        raw_artist = item.get("byArtist", {}).get("name", "")
+        artists = [a.strip() for a in raw_artist.split(",") if a.strip()] if raw_artist else ["Unknown"]
 
-        seokey = item.get("seokey", "")
-        source_url = f"https://gaana.com/song/{seokey}" if seokey else ""
+        source_url = item.get("url", "") or item.get("@id", "")
+        seokey = source_url.rstrip("/").split("/")[-1] if source_url else ""
+
+        album = item.get("inAlbum", {}).get("name", "") if isinstance(item.get("inAlbum"), dict) else ""
 
         songs.append(
             Song(
                 title=title,
                 artists=artists,
-                album=item.get("album_title", ""),
+                album=album,
                 source="gaana",
-                source_id=str(item.get("track_id", "")),
+                source_id=seokey,
                 source_url=source_url,
             )
         )
